@@ -7,14 +7,16 @@ package main
 import (
     "fmt"
     "os"
+    "encoding/json"
     "math/rand"
     "time"
     "os/exec"
     "net/url"
+    "io/ioutil"
+
     "strconv"
     "strings"
     "regexp"
-     _ "github.com/mattn/go-ieproxy/global" 
 )
 
 import (
@@ -46,11 +48,16 @@ type Animal struct {
     PreferredFood string
 }
 
+type Tokens struct{
+    Oauth_token_secret string `json:"oauth_token_secret"`
+    Oauth_token        string `json:"oauth_token"`
+}
+
 func NewFooModel() *FooModel {
     m := new(FooModel)
     m.evenBitmap, _ = walk.NewBitmapFromFile("../img/open.png")
     m.oddIcon, _ = walk.NewIconFromFile("../img/x.ico")
-    m.ResetRows()
+    //m.ResetRows()
     return m
 }
 
@@ -246,17 +253,29 @@ v.Set("count", "99")
 
     m.Sort(m.sortColumn, m.sortOrder)
 }
+const (
+    configJson = "tokens.ini"
+)
+
 var combos []string
 var api *anaconda.TwitterApi
 var boxcombo *walk.ComboBox
 var animal Animal
 func main() {
     rand.Seed(time.Now().UnixNano())
-
-    fmt.Println(os.Getenv("HTTP_PROXY"),
-    os.Getenv("HTTPS_PROXY"))
+    fmt.Println(os.Getenv("HTTP_PROXY"),os.Getenv("HTTPS_PROXY"))
 anaconda.SetConsumerKey("")
 anaconda.SetConsumerSecret("")
+
+if _, err := os.Stat(configJson);err ==nil{
+    res,err2:=ioutil.ReadFile(configJson)
+    if err2 != nil{
+        panic(err2)
+    }
+    var mt Tokens
+    json.Unmarshal(res, &mt)
+    api= anaconda.NewTwitterApi(mt.Oauth_token, mt.Oauth_token_secret)
+}
 
 combos=[]string{""}
 
@@ -304,6 +323,8 @@ var db *walk.DataBinder
                         }
                         fmt.Printf("%v",value)
                         api= anaconda.NewTwitterApi(value["oauth_token"][0], value["oauth_token_secret"][0])
+                        bytes, _ := json.Marshal(Tokens{ value["oauth_token_secret"][0], value["oauth_token"][0]})
+                        ioutil.WriteFile(configJson, bytes, os.ModePerm)
                     }
                     
                 },

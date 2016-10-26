@@ -52,6 +52,7 @@ type Tokens struct{
     Oauth_token        string `json:"oauth_token"`
 }
 
+
 func NewFooModel() *FooModel {
     m := new(FooModel)
     //m.ResetRows()
@@ -132,7 +133,7 @@ func prepend(v *Foo, slice []*Foo) []*Foo{
 var rep *regexp.Regexp
 var repMutex *sync.Mutex
 func init(){
-      rep = regexp.MustCompile(`参戦ID：([a-zA-Z\d]+?)\s*(Lv\d+)\s*(.*)`)
+      rep = regexp.MustCompile(`参戦ID：([a-zA-Z\d]+?)\s*(Lv\d+)\s*(\S+)`)
       repMutex=&sync.Mutex{}
       boxcomboMutex=&sync.Mutex{}
 }

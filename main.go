@@ -9,8 +9,8 @@ import (
     "os"
     "encoding/json"
     "math/rand"
-    "time"
     "os/exec"
+    "time"
     "net/url"
     "io/ioutil"
 
@@ -57,7 +57,7 @@ func NewFooModel() *FooModel {
     m := new(FooModel)
     m.evenBitmap, _ = walk.NewBitmapFromFile("../img/open.png")
     m.oddIcon, _ = walk.NewIconFromFile("../img/x.ico")
-    //m.ResetRows()
+    m.ResetRows()
     return m
 }
 
@@ -278,18 +278,28 @@ if _, err := os.Stat(configJson);err ==nil{
 }
 
 combos=[]string{""}
-
-
-animal = Animal{}
-
-    model := NewFooModel()
-
     var tv *walk.TableView
 
     mw := &walk.MainWindow{}
 
     boxcombo=&walk.ComboBox{}
 var db *walk.DataBinder
+
+    model := NewFooModel()
+
+animal = Animal{}
+/*
+go func(){
+    for true{
+        <-time.After(15 *1000 * time.Millisecond)
+        model.ResetRows()  
+    }
+
+}()*/
+
+    
+
+
 
     MainWindow{
         AssignTo: &mw,

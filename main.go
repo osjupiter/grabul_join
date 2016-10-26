@@ -6,11 +6,15 @@ package main
 
 import (
     "fmt"
+    "os"
     "math/rand"
-    "sort"
-    "strings"
     "time"
     "os/exec"
+    "net/url"
+    "strconv"
+    "strings"
+    "regexp"
+     _ "github.com/mattn/go-ieproxy/global" 
 )
 
 import (
@@ -22,8 +26,8 @@ import (
 type Foo struct {
     Index   int
     Bar     string
-    Baz     float64
-    Quux    time.Time
+    Baz     string
+    Quux    string
     checked bool
 }
 
@@ -39,6 +43,7 @@ type FooModel struct {
 type Sex byte
 type Animal struct {
     Name          string
+    PreferredFood string
 }
 
 func NewFooModel() *FooModel {
@@ -88,14 +93,7 @@ func (m *FooModel) SetChecked(row int, checked bool) error {
     return nil
 }
 
-// Called by the TableView to sort the model.
-func (m *FooModel) Sort(col int, order walk.SortOrder) error {
-    m.sortColumn, m.sortOrder = col, order
 
-    sort.Stable(m)
-
-    return m.SorterBase.Sort(col, order)
-}
 
 func (m *FooModel) Len() int {
     return len(m.items)
@@ -123,7 +121,7 @@ func (m *FooModel) Less(i, j int) bool {
         return c(a.Baz < b.Baz)
 
     case 3:
-        return c(a.Quux.Before(b.Quux))
+        return c(a.Quux<b.Quux)
     }
 
     panic("unreachable")
@@ -141,39 +139,129 @@ func (m *FooModel) Image(row int) interface{} {
 
     return m.oddIcon
 }
-
-func (m *FooModel) ResetRows() {
-    // Create some random data.
-    m.items = make([]*Foo, rand.Intn(50000))
-
-    now := time.Now()
-
-    for i := range m.items {
-        m.items[i] = &Foo{
-            Index: i,
-            Bar:   strings.Repeat("*", rand.Intn(5)+1),
-            Baz:   rand.Float64() * 1000,
-            Quux:  time.Unix(rand.Int63n(now.Unix()), 0),
+func stringInSlice(a string, list []string) bool {
+    for _, b := range list {
+        if b == a {
+            return true
         }
     }
+    return false
+}
+func (m *FooModel) ResetRows() {
+    // Create some random data.
+    m.items = make([]*Foo, 1)
+    now := time.Now()
+    m.items[0]= &Foo{
+            Index: 0,
+            Bar:   "aaa",
+            Baz:   "bbb",
+            Quux:  "ccc",
+    }
+
+    
+
+    if api==nil{
+        return
+    }
+
+  rep := regexp.MustCompile(`参戦ID：([a-zA-Z\d]+?)\s*(Lv\d+)\s*(.*)`)
+v := url.Values{}
+v.Set("count", "99")
+    searchString:="参加者募集！参戦ID："
+    fmt.Println(boxcombo.Text()) 
+    if boxcombo.Text() != ""{
+        searchString+=" "+boxcombo.Text()
+    }
+    combos[0]=boxcombo.Text()
+    fmt.Println(searchString)
+    searchResult, _ := api.GetSearch(searchString, v)
+    m.items = make([]*Foo, (len(searchResult.Statuses)))
+    for i , tweet := range searchResult.Statuses {
+
+        tmp:= strings.Split(tweet.CreatedAt," ")
+
+        tmptime:=strings.Split(tmp[3],":")
+        hoge:=map[string]time.Month{
+            "Jan":time.January,
+            "Feb":time.February,
+            "Mar":time.March,
+            "Apr":time.April,
+            "May":time.May,
+            "Jun":time.June,
+            "Jul":time.July,
+            "Aug":time.August,
+            "Sep":time.September,
+            "Oct":time.October,
+            "Nov":time.November,
+            "Dec":time.December,
+        }
+        Atoi:=func(str string)int{
+            i,_:=strconv.Atoi(str)
+            return i;
+        }
+
+        t := time.Date(Atoi(tmp[5]), hoge[tmp[1]], Atoi(tmp[2]), Atoi(tmptime[0]), Atoi(tmptime[1]), Atoi(tmptime[2]), 0, time.UTC)
+        duration := now.Sub(t)
+
+
+        hours0 := int(duration.Hours())
+        days := hours0 / 24
+        hours := hours0 % 24
+        mins := int(duration.Minutes()) % 60
+        secs := int(duration.Seconds()) % 60
+
+        daystring:=""
+        if days!=0{daystring+=fmt.Sprintf("%d日",days) }
+        if days!=0 || hours!=0{daystring+=fmt.Sprintf("%d時間",hours) }
+
+
+        res:=rep.FindAllStringSubmatch(tweet.Text, -1)
+        if res==nil{
+            continue
+        }
+        if len(res)==0{
+            continue
+        }
+        if len(res[0])==0{
+            continue
+        }
+        if !stringInSlice(res[0][3],combos){
+            combos=append(combos,res[0][3])
+        }
+	//curIndex:=boxcombo.CurrentIndex()
+        m.items[i] = &Foo{
+            Index: i,
+            Bar:   res[0][1],
+            Baz:   res[0][2]+" "+res[0][3],
+            Quux:  fmt.Sprintf(daystring+"%d分%d秒前\n", mins, secs),
+        }
+    }  
+
+   
+	boxcombo.SetModel(combos)
+	boxcombo.SetCurrentIndex(0)
 
     // Notify TableView and other interested parties about the reset.
     m.PublishRowsReset()
 
     m.Sort(m.sortColumn, m.sortOrder)
 }
-
+var combos []string
 var api *anaconda.TwitterApi
+var boxcombo *walk.ComboBox
+var animal Animal
 func main() {
     rand.Seed(time.Now().UnixNano())
 
-
+    fmt.Println(os.Getenv("HTTP_PROXY"),
+    os.Getenv("HTTPS_PROXY"))
 anaconda.SetConsumerKey("")
 anaconda.SetConsumerSecret("")
 
+combos=[]string{""}
 
 
-animal := new(Animal)
+animal = Animal{}
 
     model := NewFooModel()
 
@@ -181,26 +269,31 @@ animal := new(Animal)
 
     mw := &walk.MainWindow{}
 
+    boxcombo=&walk.ComboBox{}
+var db *walk.DataBinder
 
     MainWindow{
         AssignTo: &mw,
-        Title:  "Walk TableView Example",
-        Size:   Size{800, 600},
+        Title:  "参戦IDさがす君",
+        Size:   Size{500, 600},
         Layout: VBox{MarginsZero: true},
+        DataBinder: DataBinder{
+            AssignTo:       &db,
+            DataSource:     animal,
+        },
         Children: []Widget{
             Label{Text: "1. Connect to Twitter with your account."},
             PushButton{
                 Text: "Connect to Twitter",
                 OnClicked: func() {
-                    tv.SetSelectedIndexes([]int{0, 2, 4, 6, 8})
                     url,credential,err:=anaconda.AuthorizationURL("oob")
                     if err != nil {
                             fmt.Printf("%v", err)
                         }
                     fmt.Println("AuthorizationURL : "+url)
-                    exec.Command("cmd", "/C", "start", url).Run()
+                    exec.Command("cmd", "/C", "start", url,"title" ).Run()
                     
-                    if cmd, err := RunAnimalDialog(mw, animal); err != nil {
+                    if cmd, err := RunAnimalDialog(mw, &animal); err != nil {
                         fmt.Println(err)
                     } else if cmd == walk.DlgCmdOK {
                         fmt.Printf("%v",animal.Name)
@@ -215,35 +308,39 @@ animal := new(Animal)
                     
                 },
             },
-
-            Label{Text: "2. 対象を選択する"},
-
-            ComboBox{
-                Editable: true,
-                Value:    Bind("PreferredFood"),
-                Model:    []string{"Fruit", "Grass", "Fish", "Meat"},
-            },
-            Label{Text: "3. 検索する"},
+            Label{Text: "2. ロードする"},
             PushButton{
                 Text:      "Reset Rows",
                 OnClicked: model.ResetRows,
             },
+            Label{Text: "3. 種類を絞り込む（絞り込む場合ロードしなおしてください）"},
+
+            ComboBox{
+                AssignTo: &boxcombo,
+                Editable: true,
+            },
+
             Label{Text: "4. 下から選択してコピー（クリックすれば自動でコピーされます）"},
             TableView{
                 AssignTo:              &tv,
                 AlternatingRowBGColor: walk.RGB(255, 255, 224),
-                CheckBoxes:            true,
+                CheckBoxes:            false,
                 ColumnsOrderable:      true,
-                MultiSelection:        true,
+                MultiSelection:        false,
                 Columns: []TableViewColumn{
-                    {Title: "#"},
-                    {Title: "Bar"},
-                    {Title: "Baz", Format: "%.2f", Alignment: AlignFar},
-                    {Title: "Quux", Format: "2006-01-02 15:04:05", Width: 150},
+                    {Title: "#",Width: 50},
+                    {Title: "参戦ID"},
+                    {Title: "名前", Format: "%.2f", Alignment: AlignFar, Width: 150},
+                    {Title: "時刻"},
                 },
                 Model: model,
-                OnSelectedIndexesChanged: func() {
-                    fmt.Printf("SelectedIndexes: %v\n", tv.SelectedIndexes())
+                OnCurrentIndexChanged: func() {
+                    fmt.Printf("SelectedIndexes: %v\n", tv.CurrentIndex())
+                    if (tv.CurrentIndex())<0{return}
+                    if err := walk.Clipboard().SetText(model.items[tv.CurrentIndex()].Bar); err != nil {
+                        fmt.Print("Copy: ", err)
+                    }
+                    fmt.Printf(model.items[tv.CurrentIndex()].Bar)
                 },
             },
         },
@@ -273,10 +370,10 @@ func RunAnimalDialog(owner walk.Form, animal *Animal) (int, error) {
         Layout:  VBox{},
         Children: []Widget{
             Composite{
-                Layout: Grid{Columns: 2},
+                Layout: HBox{},
                 Children: []Widget{
                     Label{
-                        Text: "Name:",
+                        Text: "Enter PIN:",
                     },
                     LineEdit{
                         Text: Bind("Name"),

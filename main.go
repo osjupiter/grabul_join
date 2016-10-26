@@ -8,10 +8,11 @@ import (
     "fmt"
     "os"
     "encoding/json"
-    "math/rand"
+    "sync"
     "os/exec"
     "time"
     "net/url"
+    "errors"
     "io/ioutil"
 
     "strconv"
@@ -29,7 +30,8 @@ type Foo struct {
     Index   int
     Bar     string
     Baz     string
-    Quux    string
+    Name    string
+    Quux    time.Time
     checked bool
 }
 
@@ -38,14 +40,11 @@ type FooModel struct {
     walk.SorterBase
     sortColumn int
     sortOrder  walk.SortOrder
-    evenBitmap *walk.Bitmap
-    oddIcon    *walk.Icon
     items      []*Foo
 }
-type Sex byte
+
 type Animal struct {
     Name          string
-    PreferredFood string
 }
 
 type Tokens struct{
@@ -55,9 +54,7 @@ type Tokens struct{
 
 func NewFooModel() *FooModel {
     m := new(FooModel)
-    m.evenBitmap, _ = walk.NewBitmapFromFile("../img/open.png")
-    m.oddIcon, _ = walk.NewIconFromFile("../img/x.ico")
-    m.ResetRows()
+    //m.ResetRows()
     return m
 }
 
@@ -67,26 +64,7 @@ func (m *FooModel) RowCount() int {
     return len(m.items)
 }
 
-// Called by the TableView when it needs the text to display for a given cell.
-func (m *FooModel) Value(row, col int) interface{} {
-    item := m.items[row]
 
-    switch col {
-    case 0:
-        return item.Index
-
-    case 1:
-        return item.Bar
-
-    case 2:
-        return item.Baz
-
-    case 3:
-        return item.Quux
-    }
-
-    panic("unexpected col")
-}
 
 // Called by the TableView to retrieve if a given row is checked.
 func (m *FooModel) Checked(row int) bool {
@@ -128,7 +106,7 @@ func (m *FooModel) Less(i, j int) bool {
         return c(a.Baz < b.Baz)
 
     case 3:
-        return c(a.Quux<b.Quux)
+        return c(a.Quux.After(b.Quux))
     }
 
     panic("unreachable")
@@ -138,14 +116,7 @@ func (m *FooModel) Swap(i, j int) {
     m.items[i], m.items[j] = m.items[j], m.items[i]
 }
 
-// Called by the TableView to retrieve an item image.
-func (m *FooModel) Image(row int) interface{} {
-    if m.items[row].Index%2 == 0 {
-        return m.evenBitmap
-    }
 
-    return m.oddIcon
-}
 func stringInSlice(a string, list []string) bool {
     for _, b := range list {
         if b == a {
@@ -154,36 +125,19 @@ func stringInSlice(a string, list []string) bool {
     }
     return false
 }
-func (m *FooModel) ResetRows() {
-    // Create some random data.
-    m.items = make([]*Foo, 1)
-    now := time.Now()
-    m.items[0]= &Foo{
-            Index: 0,
-            Bar:   "aaa",
-            Baz:   "bbb",
-            Quux:  "ccc",
-    }
+func prepend(v *Foo, slice []*Foo) []*Foo{
+    return append([]*Foo{v}, slice...)
+}
 
-    
+var rep *regexp.Regexp
+var repMutex *sync.Mutex
+func init(){
+      rep = regexp.MustCompile(`参戦ID：([a-zA-Z\d]+?)\s*(Lv\d+)\s*(.*)`)
+      repMutex=&sync.Mutex{}
+      boxcomboMutex=&sync.Mutex{}
+}
 
-    if api==nil{
-        return
-    }
-
-  rep := regexp.MustCompile(`参戦ID：([a-zA-Z\d]+?)\s*(Lv\d+)\s*(.*)`)
-v := url.Values{}
-v.Set("count", "99")
-    searchString:="参加者募集！参戦ID："
-    fmt.Println(boxcombo.Text()) 
-    if boxcombo.Text() != ""{
-        searchString+=" "+boxcombo.Text()
-    }
-    combos[0]=boxcombo.Text()
-    fmt.Println(searchString)
-    searchResult, _ := api.GetSearch(searchString, v)
-    m.items = make([]*Foo, (len(searchResult.Statuses)))
-    for i , tweet := range searchResult.Statuses {
+func ParseItem(tweet anaconda.Tweet)(*Foo,error){
 
         tmp:= strings.Split(tweet.CreatedAt," ")
 
@@ -208,9 +162,60 @@ v.Set("count", "99")
         }
 
         t := time.Date(Atoi(tmp[5]), hoge[tmp[1]], Atoi(tmp[2]), Atoi(tmptime[0]), Atoi(tmptime[1]), Atoi(tmptime[2]), 0, time.UTC)
-        duration := now.Sub(t)
 
 
+
+        repMutex.Lock()
+        res:=rep.FindAllStringSubmatch(tweet.Text, -1)
+        repMutex.Unlock()
+        if res==nil||len(res)==0||len(res[0])==0{
+            return nil,errors.New("cant match")
+        }
+
+
+        return &Foo{
+            Index: 0,//i,
+            Bar:   res[0][1],
+            Baz:   res[0][2]+" "+res[0][3],
+            Name:  res[0][3],
+            Quux:  t,
+        },nil
+
+
+}
+var boxcomboMutex *sync.Mutex
+
+func getTweetBulk()(anaconda.SearchResponse, error){
+    v := url.Values{}
+    v.Set("count", "99")
+    searchString:="参加者募集！参戦ID："
+    fmt.Println(boxcombo.Text())
+    if boxcombo.Text() != ""{
+        searchString+=" "+boxcombo.Text()
+    }
+    combos[0]=boxcombo.Text()
+    fmt.Println(searchString)
+    apilock.Lock()
+    ret,err:=api.GetSearch(searchString, v)
+    apilock.Unlock()
+    return ret,err
+}
+
+func (m *FooModel) Value(row, col int) interface{} {
+    item := m.items[row]
+
+    switch col {
+    case 0:
+        return item.Index
+
+    case 1:
+        return item.Bar
+
+    case 2:
+        return item.Baz
+
+    case 3:
+          duration := time.Now().Sub(item.Quux)
         hours0 := int(duration.Hours())
         days := hours0 / 24
         hours := hours0 % 24
@@ -220,31 +225,44 @@ v.Set("count", "99")
         daystring:=""
         if days!=0{daystring+=fmt.Sprintf("%d日",days) }
         if days!=0 || hours!=0{daystring+=fmt.Sprintf("%d時間",hours) }
+        return daystring+fmt.Sprintf("%d分%d秒前",mins,secs)
+    }
+
+    panic("unexpected col")
+}
+
+func (m *FooModel) ResetRows() {
+    // Create some random data.
+    m.items = make([]*Foo, 1)
+
+    m.items[0]= &Foo{
+            Index: 0,
+            Bar:   "aaa",
+            Baz:   "bbb",
+            Name:  "ddd",
+            Quux:  time.Now(),
+    }
+
+    if api==nil{
+        return
+    }
+
+    searchResult,_:=getTweetBulk()
+    m.items= make([]*Foo, 0)
 
 
-        res:=rep.FindAllStringSubmatch(tweet.Text, -1)
-        if res==nil{
+    for _ , tweet := range searchResult.Statuses {
+        newItem, err:=ParseItem(tweet)
+        if err!=nil{
             continue
         }
-        if len(res)==0{
-            continue
+        if !stringInSlice(newItem.Name,combos){
+            combos=append(combos,newItem.Name)
         }
-        if len(res[0])==0{
-            continue
-        }
-        if !stringInSlice(res[0][3],combos){
-            combos=append(combos,res[0][3])
-        }
-	//curIndex:=boxcombo.CurrentIndex()
-        m.items[i] = &Foo{
-            Index: i,
-            Bar:   res[0][1],
-            Baz:   res[0][2]+" "+res[0][3],
-            Quux:  fmt.Sprintf(daystring+"%d分%d秒前\n", mins, secs),
-        }
-    }  
+        m.items=append(m.items,newItem)
+    }
 
-   
+
 	boxcombo.SetModel(combos)
 	boxcombo.SetCurrentIndex(0)
 
@@ -261,47 +279,113 @@ var combos []string
 var api *anaconda.TwitterApi
 var boxcombo *walk.ComboBox
 var animal Animal
-func main() {
-    rand.Seed(time.Now().UnixNano())
-    fmt.Println(os.Getenv("HTTP_PROXY"),os.Getenv("HTTPS_PROXY"))
-anaconda.SetConsumerKey("")
-anaconda.SetConsumerSecret("")
+var apilock sync.Mutex
 
-if _, err := os.Stat(configJson);err ==nil{
-    res,err2:=ioutil.ReadFile(configJson)
-    if err2 != nil{
-        panic(err2)
+func startStream(){
+    for {
+        apilock.Lock()
+        if api!=nil{
+            apilock.Unlock()
+            break;
+        }
+
+        apilock.Unlock()
     }
-    var mt Tokens
-    json.Unmarshal(res, &mt)
-    api= anaconda.NewTwitterApi(mt.Oauth_token, mt.Oauth_token_secret)
+
+    tmp:=url.Values{}
+    str:=""
+    for i:=20;i<=200;i+=5{
+        str+="Lv"+fmt.Sprintf("%d,",i)
+    }
+    fmt.Println(str)
+    tmp.Set("track",str)
+    apilock.Lock()
+
+    fmt.Println("apiからstream発行")
+    twitterStream := api.PublicStreamFilter(tmp)
+    //twitterStream := api.PublicStreamSample(nil)
+    apilock.Unlock()
+    for {
+        //fmt.Println("streamから取り出そう")
+        x := <-twitterStream.C
+        //fmt.Println("streamから取り出した")
+        switch tweet := x.(type) {
+        case anaconda.Tweet:
+            fmt.Println(tweet.Text)
+            newItem,err:=ParseItem(tweet)
+            if err!=nil{
+                continue
+            }
+            if strings.Contains(newItem.Name,boxcombo.Text())==false{
+                continue
+            }
+           if !stringInSlice(newItem.Name,combos){
+                combos=append(combos,newItem.Name)
+                boxcombo.SetModel(combos)
+                boxcombo.SetCurrentIndex(0)
+            }
+            model.items=prepend(newItem,model.items)
+            model.PublishRowsReset()
+            //m.Sort(m.sortColumn, m.sortOrder)
+            fmt.Println("-----------")
+        case anaconda.StatusDeletionNotice:
+            // pass
+        default:
+            fmt.Printf("unknown type(%T) : %v \n", x, x)
+        }
+    }
+
 }
 
-combos=[]string{""}
+
+
+func setAPIfromJson(){
+    if _, err := os.Stat(configJson);err ==nil{
+        res,err2:=ioutil.ReadFile(configJson)
+        if err2 != nil{
+            panic(err2)
+        }
+        var mt Tokens
+        json.Unmarshal(res, &mt)
+        apilock.Lock()
+        api= anaconda.NewTwitterApi(mt.Oauth_token, mt.Oauth_token_secret)
+        apilock.Unlock()
+    }
+}
+var model *FooModel
+func main() {
+    fmt.Println(os.Getenv("HTTP_PROXY"),os.Getenv("HTTPS_PROXY"))
+    anaconda.SetConsumerKey(ConsumerKey)
+    anaconda.SetConsumerSecret(ConsumerSecret)
+
+    setAPIfromJson()
+
+
+    combos=[]string{""}
     var tv *walk.TableView
 
     mw := &walk.MainWindow{}
 
     boxcombo=&walk.ComboBox{}
-var db *walk.DataBinder
+    var db *walk.DataBinder
 
-    model := NewFooModel()
+    model = NewFooModel()
 
-animal = Animal{}
+    animal = Animal{}
 /*
 go func(){
     for true{
         <-time.After(15 *1000 * time.Millisecond)
-        model.ResetRows()  
+        model.ResetRows()
     }
 
 }()*/
 
-    
+    go startStream()
 
 
 
-    MainWindow{
+    _,err:=MainWindow{
         AssignTo: &mw,
         Title:  "参戦IDさがす君",
         Size:   Size{500, 600},
@@ -321,7 +405,7 @@ go func(){
                         }
                     fmt.Println("AuthorizationURL : "+url)
                     exec.Command("cmd", "/C", "start", url,"title" ).Run()
-                    
+
                     if cmd, err := RunAnimalDialog(mw, &animal); err != nil {
                         fmt.Println(err)
                     } else if cmd == walk.DlgCmdOK {
@@ -332,11 +416,13 @@ go func(){
                             fmt.Println(err)
                         }
                         fmt.Printf("%v",value)
+                        apilock.Lock()
                         api= anaconda.NewTwitterApi(value["oauth_token"][0], value["oauth_token_secret"][0])
+                        apilock.Unlock()
                         bytes, _ := json.Marshal(Tokens{ value["oauth_token_secret"][0], value["oauth_token"][0]})
                         ioutil.WriteFile(configJson, bytes, os.ModePerm)
                     }
-                    
+
                 },
             },
             Label{Text: "2. ロードする"},
@@ -361,7 +447,7 @@ go func(){
                 Columns: []TableViewColumn{
                     {Title: "#",Width: 50},
                     {Title: "参戦ID"},
-                    {Title: "名前", Format: "%.2f", Alignment: AlignFar, Width: 150},
+                    {Title: "名前", Alignment: AlignFar, Width: 150},
                     {Title: "時刻"},
                 },
                 Model: model,
@@ -376,6 +462,10 @@ go func(){
             },
         },
     }.Run()
+    if err!=nil{
+        panic(err)
+    }
+
 }
 
 
@@ -389,7 +479,7 @@ func RunAnimalDialog(owner walk.Form, animal *Animal) (int, error) {
 
     return Dialog{
         AssignTo:      &dlg,
-        Title:         "Animal Details",
+        Title:         "Input PIN",
         DefaultButton: &acceptPB,
         CancelButton:  &cancelPB,
         DataBinder: DataBinder{
